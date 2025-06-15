@@ -1,6 +1,10 @@
+from clustering_utils import cluster_texts, vectorize_texts
 import os, json, numpy as np, pandas as pd, matplotlib.pyplot as plt, seaborn as sns
 import streamlit as st
 from sklearn.decomposition import PCA
+from sklearn.cluster import KMeans, AgglomerativeClustering
+from sklearn.mixture import GaussianMixture
+from sklearn.preprocessing import StandardScaler
 
 sns.set(style="whitegrid")
 OUT = "outputs"                 
@@ -93,9 +97,22 @@ elif page == "Clustering":
     st.title("Company Clustering Analysis")
 
     if "cluster_best" not in company_df.columns:
-        st.error("The definitive 'cluster_best' column was not found in the data file.")
-        st.info("Please ensure your notebook generates and saves the 'cluster_best' column in the 'company_clusters_with_topics.csv' file.")
-        st.stop()
+        st.warning("Pre-computed clusters not found – running a quick clustering using TF-IDF.")
+        if "doc" not in company_df.columns:
+            st.error("No aggregated review text ('doc') found to run clustering.")
+            st.stop()
+        results = cluster_texts(company_df["doc"].fillna("").tolist())
+        best = results.iloc[0]
+        st.info(f"Temporary best model: {best.algorithm} with k={best.k} (sil={best.silhouette:.3f})")
+        if best.algorithm == "KMeans":
+            model = KMeans(n_clusters=int(best.k), n_init=10, random_state=42)
+        elif best.algorithm == "Agglomerative":
+            model = AgglomerativeClustering(n_clusters=int(best.k), linkage="ward")
+        else:
+            model = GaussianMixture(n_components=int(best.k), random_state=42)
+        X = vectorize_texts(company_df["doc"].fillna("").tolist())
+        scaler = StandardScaler()
+        company_df["cluster_best"] = model.fit_predict(scaler.fit_transform(X))
 
     algo = "cluster_best"
     st.info(f"Displaying results for the best identified algorithm, stored in the `{algo}` column.")
